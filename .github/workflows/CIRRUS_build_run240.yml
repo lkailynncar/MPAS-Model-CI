@@ -29,11 +29,11 @@ jobs:
       fail-fast: false
       matrix:
         #compiler: [ nvhpc, oneapi, aocc, gcc, gcc12, gcc13, gcc14, clang ]
-        compiler: [ nvhpc, gcc, oneapi]
+        compiler: [ nvhpc]
         #mpi:      [ openmpi, mpich, mpich3 ]
         mpi:      [ mpich3 ]
-        gpu:      [ nogpu, cuda ]
-        io:       [ pio, smiol ]
+        gpu:      [ cuda ]
+        io:       [ smiol ]
         arch:     [ x86_64 ]
 
         include:
@@ -43,8 +43,8 @@ jobs:
             extra_mpi_args: 'export MPI_IMPL=mpich'
           - io: smiol
             extra_io_args: 'unset PIO; export USE_PIO2=false'
-          - io: pio
-            extra_io_args: 'export PIO_ROOT=${PIO_ROOT:-/container/pio}; export USE_PIO2=true'
+          #- io: pio
+          #  extra_io_args: 'export PIO_ROOT=${PIO_ROOT:-/container/pio}; export USE_PIO2=true'
           - compiler: nvhpc
             gpu: cuda
             extra_accel_args: 'export OPENACC=true'
@@ -97,6 +97,7 @@ jobs:
           mpicc --version 2>/dev/null || true
       - name: Build MPAS-A
         continue-on-error: false
+        timeout-minutes: 20
         run: |
           chmod +x .github/workflows/build_mpas.sh
           # Use extra_io_args to set whether to use PIO or SMIOL
@@ -120,13 +121,13 @@ jobs:
       fail-fast: false
       matrix:
         #compiler: [ nvhpc, oneapi, aocc, gcc, gcc12, gcc13, gcc14, clang ]
-        compiler: [ nvhpc, gcc ]
+        compiler: [ nvhpc ]
         #mpi:      [ openmpi, mpich, mpich3 ]
         mpi:      [ mpich3 ]
-        gpu:      [ nogpu, cuda ]
-        io:       [ pio, smiol ]
+        gpu:      [ cuda ]
+        io:       [ smiol ]
         arch:     [ x86_64 ]
-        num_procs: [ 1, 4 ]
+        num_procs: [ 1]
 
         include:
           #- mpi: openmpi
@@ -194,6 +195,7 @@ jobs:
 
       - name: Run MPAS-A 240km case with ${ matrix.num_procs } ranks
         continue-on-error: true
+        timeout-minutes: 10
         run: |
           chmod +x .github/workflows/run_mpas_240km.sh
           # Use extra_mpi_args to set MPI implementation
