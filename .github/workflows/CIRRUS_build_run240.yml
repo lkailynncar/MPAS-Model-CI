@@ -52,7 +52,7 @@ jobs:
 
     name: Build MPAS-A
     #runs-on: ubuntu-latest
-    runs-on: CIRRUS-4x8-gpu
+    runs-on: [self-hosted, CIRRUS-4x8-gpu]
     defaults:
       run:
         shell: bash -elo pipefail {0}
@@ -141,7 +141,7 @@ jobs:
 
     needs: build-run-mpas
     #runs-on: ubuntu-latest
-    runs-on: CIRRUS-4x8-gpu
+    runs-on: [self-hosted, CIRRUS-4x8-gpu]
     defaults:
       run:
         shell: bash -elo pipefail {0}
