@@ -5,6 +5,34 @@ name: (CIRRUS, cisldev) - Build MPAS-A and run 240km test case
 # NCAR/CISL Docker Hub: https://hub.docker.com/u/ncarcisl
 # Ben Kirk's workflows: https://github.com/benkirk/demo_github_actions
 
+#=============================================================================
+# CONFIGURATION: Edit these sections to add/remove build and run options
+#=============================================================================
+# The mappings below define how each option translates to environment settings.
+# To add a new option: 1) Add it to the matrix, 2) Add its mapping in env below.
+# To remove an option: Just remove it from the matrix (mappings can stay).
+#=============================================================================
+
+env:
+  #---------------------------------------------------------------------------
+  # MPI Implementation Mappings (MPI_MAP_<option>)
+  #---------------------------------------------------------------------------
+  MPI_MAP_openmpi: 'export MPI_IMPL=openmpi'
+  MPI_MAP_mpich:   'export MPI_IMPL=mpich'
+  MPI_MAP_mpich3:  'export MPI_IMPL=mpich'
+
+  #---------------------------------------------------------------------------
+  # I/O Library Mappings (IO_MAP_<option>)
+  #---------------------------------------------------------------------------
+  IO_MAP_smiol: 'unset PIO; export USE_PIO2=false'
+  IO_MAP_pio:   'export PIO_ROOT=${PIO_ROOT:-/container/pio}; export USE_PIO2=true'
+
+  #---------------------------------------------------------------------------
+  # GPU/Accelerator Mappings (GPU_MAP_<option>)
+  # Note: 'none' means CPU-only build
+  #---------------------------------------------------------------------------
+  GPU_MAP_cuda: 'export OPENACC=true'
+  GPU_MAP_none: ''
 
 on:
   workflow_dispatch:
@@ -24,34 +52,27 @@ on:
 
 jobs:
 
-  build-run-mpas:
+  #===========================================================================
+  # BUILD JOB: Builds MPAS-A for each combination in the matrix
+  #===========================================================================
+  # To modify build configurations, edit ONLY the matrix arrays below.
+  # The include section is auto-generated from the env mappings above.
+  #===========================================================================
+  build-mpas:
     strategy:
       fail-fast: false
       matrix:
-        #compiler: [ nvhpc, oneapi, aocc, gcc, gcc12, gcc13, gcc14, clang ]
-        compiler: [ nvhpc]
-        #mpi:      [ openmpi, mpich, mpich3 ]
-        mpi:      [ mpich3 ]
-        gpu:      [ cuda ]
-        io:       [ smiol ]
-        arch:     [ x86_64 ]
-
-        include:
-         #- mpi: openmpi
-         #   extra_mpi_args: 'export MPI_IMPL=openmpi'
-          - mpi: mpich3
-            extra_mpi_args: 'export MPI_IMPL=mpich'
-          - io: smiol
-            extra_io_args: 'unset PIO; export USE_PIO2=false'
-          #- io: pio
-          #  extra_io_args: 'export PIO_ROOT=${PIO_ROOT:-/container/pio}; export USE_PIO2=true'
-          - compiler: nvhpc
-            gpu: cuda
-            extra_accel_args: 'export OPENACC=true'
+        #---------------------------------------------------------------------
+        # BUILD OPTIONS - Edit these arrays to change what gets built
+        #---------------------------------------------------------------------
+        compiler: [ nvhpc, oneapi, gcc ]              # Options: nvhpc, oneapi, aocc, gcc, gcc12, gcc13, gcc14, clang
+        mpi:      [ mpich3, openmpi ]             # Options: openmpi, mpich, mpich3
+        gpu:      [ cuda, nogpu ]               # Options: cuda, nogpu
+        io:       [ smiol ]              # Options: smiol, pio
+        arch:     [ x86_64 ]             # Options: x86_64
 
 
-    name: Build MPAS-A
-    #runs-on: ubuntu-latest
+    name: Build (${{ matrix.compiler }}, ${{ matrix.mpi }}, ${{ matrix.gpu }}, ${{ matrix.io }})
     runs-on:
       group: CIRRUS-4x8-gpu
     defaults:
@@ -96,52 +117,58 @@ jobs:
           which conda 2>/dev/null && conda --version || echo " --> no conda in this container"
           which mpicc
           mpicc --version 2>/dev/null || true
+
       - name: Build MPAS-A
         continue-on-error: false
         timeout-minutes: 20
         run: |
           chmod +x .github/workflows/build_mpas.sh
-          # Use extra_io_args to set whether to use PIO or SMIOL
-          if [ -n "${{ matrix.extra_io_args }}" ]; then
-            eval "${{ matrix.extra_io_args }}"
-          fi
-          # Use extra_accel_args to set whether to use OpenACC
-          if [ -n "${{ matrix.extra_accel_args }}" ]; then
-            eval "${{ matrix.extra_accel_args }}"
-          fi
+          
+          # Apply I/O library settings from env mappings
+          eval "${{ env[format('IO_MAP_{0}', matrix.io)] }}"
+          
+          # Apply GPU/accelerator settings from env mappings
+          eval "${{ env[format('GPU_MAP_{0}', matrix.gpu)] }}"
+          
+          echo "Build configuration:"
+          echo "  USE_PIO2=${USE_PIO2:-not set}"
+          echo "  OPENACC=${OPENACC:-not set}"
+          
           timeout 25m .github/workflows/build_mpas.sh
+
       - name: Upload atmosphere_model executable
         uses: actions/upload-artifact@v4
         with:
           name: atmosphere_model-${{ matrix.compiler }}_${{ matrix.mpi }}_${{ matrix.gpu }}_${{ matrix.io }}
           path: atmosphere_model
   
+  #===========================================================================
+  # RUN JOB: Runs the 240km test case for selected build configurations
+  #===========================================================================
+  # IMPORTANT: The compiler/mpi/gpu/io combinations here must be a SUBSET
+  # of what was built above. The artifact name must match exactly.
+  # You can add different num_procs values to test scaling.
+  #===========================================================================
   run-mpas-240km:
+    needs: build-mpas
 
     strategy:
       fail-fast: false
       matrix:
-        #compiler: [ nvhpc, oneapi, aocc, gcc, gcc12, gcc13, gcc14, clang ]
-        compiler: [ nvhpc ]
-        #mpi:      [ openmpi, mpich, mpich3 ]
-        mpi:      [ mpich3 ]
-        gpu:      [ cuda ]
-        io:       [ smiol ]
-        arch:     [ x86_64 ]
-        num_procs: [ 1]
+        #---------------------------------------------------------------------
+        # RUN OPTIONS - These must match builds from above (for artifact download)
+        #---------------------------------------------------------------------
+        compiler: [ nvhpc, oneapi, gcc ]              # Must exist in build matrix
+        mpi:      [ mpich3 ]             # Must exist in build matrix
+        gpu:      [ cuda, nogpu ]               # Must exist in build matrix
+        io:       [ smiol ]              # Must exist in build matrix
+        arch:     [ x86_64 ]             # Must exist in build matrix
+        #---------------------------------------------------------------------
+        # RUN-SPECIFIC OPTIONS - These can vary independently
+        #---------------------------------------------------------------------
+        num_procs: [ 1 ]                 # Number of MPI ranks to test
 
-        include:
-          #- mpi: openmpi
-          #  extra_mpi_args: 'export MPI_IMPL=openmpi'
-          - mpi: mpich3
-            extra_mpi_args: 'export MPI_IMPL=mpich'
-          - io: smiol
-            extra_io_args: 'unset PIO; export USE_PIO2=false'
-          - io: pio
-            extra_io_args: 'export PIO_ROOT=${PIO_ROOT:-/container/pio}; export USE_PIO2=true'
-
-    needs: build-run-mpas
-    #runs-on: ubuntu-latest
+    name: Run 240km (${{ matrix.compiler }}, ${{ matrix.mpi }}, ${{ matrix.gpu }}, ${{ matrix.io }}, ${{ matrix.num_procs }}proc)
     runs-on: 
       group: CIRRUS-4x8-gpu
     defaults:
@@ -186,25 +213,30 @@ jobs:
           which conda 2>/dev/null && conda --version || echo " --> no conda in this container"
           which mpicc
           mpicc --version 2>/dev/null || true
+
       - name: Download atmosphere_model executable
         uses: actions/download-artifact@v4
         with:
           name: atmosphere_model-${{ matrix.compiler }}_${{ matrix.mpi }}_${{ matrix.gpu }}_${{ matrix.io }}
-          path: 
 
       - name: Make atmosphere_model executable
         run: chmod +x atmosphere_model
 
-      - name: Run MPAS-A 240km case with ${ matrix.num_procs } ranks
+      - name: Run MPAS-A 240km case with ${{ matrix.num_procs }} ranks
         continue-on-error: true
         timeout-minutes: 10
         run: |
           chmod +x .github/workflows/run_mpas_240km.sh
-          # Use extra_mpi_args to set MPI implementation
-          if [ -n "${{ matrix.extra_mpi_args }}" ]; then
-            eval "${{ matrix.extra_mpi_args }}"
-          fi
+          
+          # Apply MPI settings from env mappings
+          eval "${{ env[format('MPI_MAP_{0}', matrix.mpi)] }}"
+          
+          echo "Run configuration:"
+          echo "  MPI_IMPL=${MPI_IMPL:-not set}"
+          echo "  num_procs=${{ matrix.num_procs }}"
+          
           .github/workflows/run_mpas_240km.sh ${{ matrix.num_procs }}
+
       - name: Upload log files
         uses: actions/upload-artifact@v4
         with:
@@ -219,3 +251,23 @@ jobs:
       #    name: mpas_240km_${{ matrix.num_procs }}rank_restart_${{ matrix.compiler }}_${{ matrix.mpi }}_${{ matrix.gpu }}_${{ matrix.io }}
       #    path: |
       #      240km_${{ matrix.num_procs }}/restart.*
+
+  #===========================================================================
+  # CLEANUP JOB: Deletes executable artifacts after all runs complete
+  #===========================================================================
+  # This job runs after all run jobs finish (success or failure) to free up
+  # GitHub artifact storage. Log artifacts are kept for debugging.
+  # No matrix needed - uses wildcard pattern to delete all executables.
+  #===========================================================================
+  cleanup-artifacts:
+    needs: run-mpas-240km
+    if: always()
+    runs-on: ubuntu-latest
+    name: Cleanup executable artifacts
+    
+    steps:
+      - name: Delete all executable artifacts
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: atmosphere_model-*
+          failOnError: false
