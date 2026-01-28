@@ -52,7 +52,8 @@ jobs:
 
     name: Build MPAS-A
     #runs-on: ubuntu-latest
-    runs-on: nwc1-cirrus-4x8-gpu
+    runs-on:
+      group: CIRRUS-4x8-gpu
     defaults:
       run:
         shell: bash -elo pipefail {0}
@@ -141,7 +142,8 @@ jobs:
 
     needs: build-run-mpas
     #runs-on: ubuntu-latest
-    runs-on: nwc1-cirrus-4x8-gpu
+    runs-on: 
+      group: CIRRUS-4x8-gpu
     defaults:
       run:
         shell: bash -elo pipefail {0}
