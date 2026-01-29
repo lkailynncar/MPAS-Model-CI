@@ -227,7 +227,7 @@ jobs:
 
       - name: Run MPAS-A 240km case with ${{ matrix.num_procs }} ranks
         continue-on-error: true
-        timeout-minutes: 10
+        timeout-minutes: 20
         run: |
           chmod +x .github/workflows/run_mpas_240km.sh
           # Use extra_mpi_args to set MPI implementation
@@ -247,10 +247,47 @@ jobs:
             240km_${{ matrix.num_procs }}/log.*
 
   #===========================================================================
+  # VALIDATION JOB: Compare log outputs against reference standard
+  #===========================================================================
+  validate-results:
+    needs: run-mpas-240km
+    if: always()
+    runs-on: ubuntu-latest
+    name: Validate run results
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/workflows/validation
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Download all log artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: mpas_240km_*_logs_*
+          path: logs
+
+      - name: List downloaded artifacts
+        run: |
+          echo "Downloaded log artifacts:"
+          ls -la logs/
+          find logs -name "*.out" | head -20
+
+      - name: Compare logs against reference
+        run: |
+          python .github/workflows/validation/compare_logs.py \
+            logs \
+            .github/workflows/validation/reference_log.atmosphere.0000.out
+
+  #===========================================================================
   # CLEANUP JOB: Deletes executable artifacts after all runs complete
   #===========================================================================
   cleanup-artifacts:
-    needs: run-mpas-240km
+    needs: [run-mpas-240km, validate-results]
     if: always()
     runs-on: ubuntu-latest
     name: Cleanup executable artifacts
