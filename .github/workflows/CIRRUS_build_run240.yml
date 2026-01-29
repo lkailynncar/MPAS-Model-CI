@@ -38,6 +38,13 @@ jobs:
         io:       [ smiol, pio ]
         arch:     [ x86_64 ]
 
+        # Skip cuda builds for compilers that don't use OpenACC
+        exclude:
+          - compiler: gcc
+            gpu: cuda
+          - compiler: oneapi
+            gpu: cuda
+
         # Map each option value to its environment setup command
         include:
           # MPI mappings
@@ -143,6 +150,13 @@ jobs:
         arch:     [ x86_64 ]
         # Run-specific options
         num_procs: [ 1 ]
+
+        # Skip cuda runs for compilers that don't use OpenACC (matches build excludes)
+        exclude:
+          - compiler: gcc
+            gpu: cuda
+          - compiler: oneapi
+            gpu: cuda
 
         # Map each option value to its environment setup command
         include:
