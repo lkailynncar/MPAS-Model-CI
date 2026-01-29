@@ -16,6 +16,14 @@ NUM_PROCS="${1:-${NUM_PROCS:-1}}"
 RUN_DURATION="${2:-${RUN_DURATION:-0_06:00:00}}"
 RESTART_INTERVAL="${3:-${RESTART_INTERVAL:-0_06:00:00}}"
 
+#----------------------------------------------------------------------------
+# Set MPI flags based on implementation
+# OpenMPI requires --allow-run-as-root when running in containers as root
+#----------------------------------------------------------------------------
+if [ "${MPI_IMPL}" = "openmpi" ]; then
+    MPI_FLAGS="${MPI_FLAGS} --allow-run-as-root"
+fi
+
 tar xzf .github/workflows/240km.tar.gz
 mv 240km 240km_${NUM_PROCS}
 cd 240km_${NUM_PROCS}/
