@@ -64,7 +64,7 @@ which conda 2>/dev/null && conda --version || echo "No conda in this container"
 
 echo ""
 echo "=== MPI Compiler ==="
-which mpicc
+which mpicc 2>/dev/null || echo "mpicc not found in PATH"
 mpicc --version 2>/dev/null || true
 
 echo ""
