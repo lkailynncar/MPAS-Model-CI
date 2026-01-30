@@ -14,6 +14,7 @@ jobs:
   build:
     strategy:
       fail-fast: false
+      max-parallel: 4
       matrix:
         include:
           # NVHPC NoGPU with MPICH
@@ -112,6 +113,7 @@ jobs:
     needs: build
     strategy:
       fail-fast: false
+      max-parallel: 4
       matrix:
         include:
           # NVHPC NoGPU with MPICH
