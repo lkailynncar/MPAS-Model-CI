@@ -52,13 +52,23 @@ runs:
         # Extract test case
         tar xzf ${{ inputs.test-case }}
         
+        # Get the extracted directory name (avoiding SIGPIPE with head)
+        CASE_DIR=$(tar tzf ${{ inputs.test-case }} 2>/dev/null | head -1 | cut -d/ -f1 || true)
+        if [ -z "${CASE_DIR}" ]; then
+          # Fallback: find the directory that was just created
+          CASE_DIR=$(ls -td */ 2>/dev/null | head -1 | tr -d '/')
+        fi
+        echo "Extracted case directory: ${CASE_DIR}"
+        
         # Rename to working directory
-        CASE_DIR=$(tar tzf ${{ inputs.test-case }} | head -1 | cut -d/ -f1)
-        mv ${CASE_DIR} ${{ inputs.working-dir }}
+        mv "${CASE_DIR}" ${{ inputs.working-dir }}
         
         # Link executable
         chmod +x ${{ inputs.executable }}
         ln -sf $(realpath ${{ inputs.executable }}) ${{ inputs.working-dir }}/atmosphere_model
+        
+        echo "Setup complete. Working directory contents:"
+        ls -la ${{ inputs.working-dir }}/
 
     - name: Configure namelist
       shell: bash
@@ -124,8 +134,12 @@ runs:
     - name: List output files
       shell: bash
       if: always()
-      working-directory: ${{ inputs.working-dir }}
       run: |
         echo "=== Output files ==="
-        ls -la log.* 2>/dev/null || echo "No log files found"
-        ls -la *.nc 2>/dev/null || echo "No NetCDF files found"
+        if [ -d "${{ inputs.working-dir }}" ]; then
+          cd "${{ inputs.working-dir }}"
+          ls -la log.* 2>/dev/null || echo "No log files found"
+          ls -la *.nc 2>/dev/null || echo "No NetCDF files found"
+        else
+          echo "Working directory ${{ inputs.working-dir }} does not exist"
+        fi
