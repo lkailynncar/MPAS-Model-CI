@@ -1,0 +1,124 @@
+name: 'Run MPAS'
+description: 'Run MPAS-Atmosphere test case'
+
+inputs:
+  executable:
+    description: 'Path to atmosphere_model executable'
+    required: false
+    default: './atmosphere_model'
+  num-procs:
+    description: 'Number of MPI processes'
+    required: false
+    default: '1'
+  run-duration:
+    description: 'Run duration (format: D_HH:MM:SS)'
+    required: false
+    default: '0_06:00:00'
+  restart-interval:
+    description: 'Restart output interval (format: D_HH:MM:SS)'
+    required: false
+    default: '0_06:00:00'
+  test-case:
+    description: 'Test case archive (tar.gz file path)'
+    required: false
+    default: '.github/workflows/240km.tar.gz'
+  mpi-impl:
+    description: 'MPI implementation (openmpi, mpich)'
+    required: false
+    default: ''
+  run-timeout:
+    description: 'Run timeout in minutes'
+    required: false
+    default: '20'
+  working-dir:
+    description: 'Working directory name for the run'
+    required: false
+    default: 'run'
+
+outputs:
+  log-dir:
+    description: 'Directory containing log files'
+    value: ${{ steps.run.outputs.log-dir }}
+  status:
+    description: 'Run status (success/failed)'
+    value: ${{ steps.run.outputs.status }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup test case
+      shell: bash
+      run: |
+        # Extract test case
+        tar xzf ${{ inputs.test-case }}
+        
+        # Rename to working directory
+        CASE_DIR=$(tar tzf ${{ inputs.test-case }} | head -1 | cut -d/ -f1)
+        mv ${CASE_DIR} ${{ inputs.working-dir }}
+        
+        # Link executable
+        chmod +x ${{ inputs.executable }}
+        ln -sf $(realpath ${{ inputs.executable }}) ${{ inputs.working-dir }}/atmosphere_model
+
+    - name: Configure namelist
+      shell: bash
+      working-directory: ${{ inputs.working-dir }}
+      run: |
+        # Modify run duration
+        sed -i "s/config_run_duration = '[^']*'/config_run_duration = '${{ inputs.run-duration }}'/" namelist.atmosphere
+        
+        # Modify restart interval
+        sed -i '/<immutable_stream name="restart"/,/\/>/ s/output_interval="[^"]*"/output_interval="${{ inputs.restart-interval }}"/' streams.atmosphere
+        
+        echo "=== Namelist configuration ==="
+        grep config_run_duration namelist.atmosphere
+
+    - name: Run MPAS-A
+      id: run
+      shell: bash
+      working-directory: ${{ inputs.working-dir }}
+      run: |
+        # Set MPI implementation
+        if [ -n "${{ inputs.mpi-impl }}" ]; then
+          export MPI_IMPL="${{ inputs.mpi-impl }}"
+        fi
+        
+        # Set MPI flags
+        MPI_FLAGS=""
+        if [ "${MPI_IMPL}" = "openmpi" ]; then
+          MPI_FLAGS="--allow-run-as-root"
+        fi
+        
+        # Set unlimited stack size
+        ulimit -s unlimited 2>/dev/null || echo "Warning: Could not set unlimited stack size"
+        
+        echo "=== Run configuration ==="
+        echo "  Processors: ${{ inputs.num-procs }}"
+        echo "  Duration: ${{ inputs.run-duration }}"
+        echo "  MPI_IMPL: ${MPI_IMPL:-auto}"
+        echo "  MPI_FLAGS: ${MPI_FLAGS}"
+        echo "  Stack limit: $(ulimit -s)"
+        
+        # Run model
+        set +e
+        timeout ${{ inputs.run-timeout }}m mpirun -n ${{ inputs.num-procs }} ${MPI_FLAGS} ./atmosphere_model
+        RUN_STATUS=$?
+        set -e
+        
+        # Set outputs
+        echo "log-dir=$(pwd)" >> $GITHUB_OUTPUT
+        if [ $RUN_STATUS -eq 0 ]; then
+          echo "status=success" >> $GITHUB_OUTPUT
+        else
+          echo "status=failed" >> $GITHUB_OUTPUT
+          echo "WARNING: Run exited with status $RUN_STATUS"
+        fi
+
+    - name: List output files
+      shell: bash
+      if: always()
+      working-directory: ${{ inputs.working-dir }}
+      run: |
+        echo "=== Output files ==="
+        ls -la log.* 2>/dev/null || echo "No log files found"
+        ls -la *.nc 2>/dev/null || echo "No NetCDF files found"

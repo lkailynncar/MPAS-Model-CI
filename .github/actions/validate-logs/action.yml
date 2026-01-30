@@ -1,0 +1,57 @@
+name: 'Validate MPAS Logs'
+description: 'Validate MPAS-Atmosphere output logs against reference'
+
+inputs:
+  logs-path:
+    description: 'Path to directory containing log artifacts'
+    required: true
+  reference-log:
+    description: 'Path to reference log file'
+    required: false
+    default: '.github/workflows/validation/reference_log.atmosphere.0000.out'
+  validation-script:
+    description: 'Path to validation script'
+    required: false
+    default: '.github/workflows/validation/compare_logs.py'
+
+outputs:
+  status:
+    description: 'Validation status (pass/fail)'
+    value: ${{ steps.validate.outputs.status }}
+  summary:
+    description: 'Validation summary'
+    value: ${{ steps.validate.outputs.summary }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: List log artifacts
+      shell: bash
+      run: |
+        echo "=== Log artifacts ==="
+        if [ -d "${{ inputs.logs-path }}" ]; then
+          ls -la "${{ inputs.logs-path }}/"
+          find "${{ inputs.logs-path }}" -name "*.out" | head -20
+        else
+          echo "WARNING: Logs directory not found: ${{ inputs.logs-path }}"
+        fi
+
+    - name: Validate logs against reference
+      id: validate
+      shell: bash
+      run: |
+        set +e
+        python ${{ inputs.validation-script }} \
+          "${{ inputs.logs-path }}" \
+          "${{ inputs.reference-log }}"
+        VALIDATE_STATUS=$?
+        set -e
+        
+        if [ $VALIDATE_STATUS -eq 0 ]; then
+          echo "status=pass" >> $GITHUB_OUTPUT
+          echo "summary=All validations passed" >> $GITHUB_OUTPUT
+        else
+          echo "status=fail" >> $GITHUB_OUTPUT
+          echo "summary=Some validations failed" >> $GITHUB_OUTPUT
+          exit 1
+        fi

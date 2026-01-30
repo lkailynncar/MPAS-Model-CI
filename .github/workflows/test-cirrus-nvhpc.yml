@@ -1,0 +1,262 @@
+# CIRRUS self-hosted runner workflow
+# Builds and runs all NVHPC configurations (CUDA and NoGPU)
+# Useful for comparing GPU vs CPU performance and results
+#
+name: (CIRRUS) NVHPC GPU vs CPU
+
+on:
+  workflow_dispatch:
+    inputs:
+      os:
+        description: 'Container OS'
+        type: choice
+        default: 'almalinux9'
+        options:
+          - almalinux8
+          - almalinux9
+
+env:
+  REGISTRY: ncarcisl
+  IMAGE_PREFIX: cisldev-x86_64
+
+jobs:
+  #===========================================================================
+  # BUILD: All NVHPC configurations (CUDA and NoGPU)
+  #===========================================================================
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # NVHPC NoGPU with MPICH
+          - compiler: nvhpc
+            mpi: mpich3
+            gpu: nogpu
+            io: smiol
+            image-suffix: nvhpc-mpich3
+            build-target: nvhpc
+            openacc: false
+          - compiler: nvhpc
+            mpi: mpich3
+            gpu: nogpu
+            io: pio
+            image-suffix: nvhpc-mpich3
+            build-target: nvhpc
+            openacc: false
+          
+          # NVHPC NoGPU with OpenMPI
+          - compiler: nvhpc
+            mpi: openmpi
+            gpu: nogpu
+            io: smiol
+            image-suffix: nvhpc-openmpi
+            build-target: nvhpc
+            openacc: false
+          - compiler: nvhpc
+            mpi: openmpi
+            gpu: nogpu
+            io: pio
+            image-suffix: nvhpc-openmpi
+            build-target: nvhpc
+            openacc: false
+
+          # NVHPC CUDA with MPICH
+          - compiler: nvhpc
+            mpi: mpich3
+            gpu: cuda
+            io: smiol
+            image-suffix: nvhpc-mpich3-cuda
+            build-target: nvhpc
+            openacc: true
+          - compiler: nvhpc
+            mpi: mpich3
+            gpu: cuda
+            io: pio
+            image-suffix: nvhpc-mpich3-cuda
+            build-target: nvhpc
+            openacc: true
+          
+          # NVHPC CUDA with OpenMPI
+          - compiler: nvhpc
+            mpi: openmpi
+            gpu: cuda
+            io: smiol
+            image-suffix: nvhpc-openmpi-cuda
+            build-target: nvhpc
+            openacc: true
+          - compiler: nvhpc
+            mpi: openmpi
+            gpu: cuda
+            io: pio
+            image-suffix: nvhpc-openmpi-cuda
+            build-target: nvhpc
+            openacc: true
+
+    name: Build (${{ matrix.mpi }}, ${{ matrix.gpu }}, ${{ matrix.io }})
+    runs-on:
+      group: CIRRUS-4x8-gpu
+    container:
+      image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ inputs.os }}-${{ matrix.image-suffix }}:devel
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'true'
+
+      - name: Build MPAS-A
+        uses: ./.github/actions/build-mpas
+        with:
+          compiler: ${{ matrix.build-target }}
+          use-pio: ${{ matrix.io == 'pio' }}
+          openacc: ${{ matrix.openacc }}
+
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: exe-${{ matrix.compiler }}-${{ matrix.mpi }}-${{ matrix.gpu }}-${{ matrix.io }}
+          path: atmosphere_model
+          retention-days: 1
+
+  #===========================================================================
+  # RUN: All NVHPC configurations (CUDA and NoGPU)
+  #===========================================================================
+  run:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # NVHPC NoGPU with MPICH
+          - compiler: nvhpc
+            mpi: mpich3
+            gpu: nogpu
+            io: smiol
+            image-suffix: nvhpc-mpich3
+            mpi-impl: mpich
+          - compiler: nvhpc
+            mpi: mpich3
+            gpu: nogpu
+            io: pio
+            image-suffix: nvhpc-mpich3
+            mpi-impl: mpich
+          
+          # NVHPC NoGPU with OpenMPI
+          - compiler: nvhpc
+            mpi: openmpi
+            gpu: nogpu
+            io: smiol
+            image-suffix: nvhpc-openmpi
+            mpi-impl: openmpi
+          - compiler: nvhpc
+            mpi: openmpi
+            gpu: nogpu
+            io: pio
+            image-suffix: nvhpc-openmpi
+            mpi-impl: openmpi
+
+          # NVHPC CUDA with MPICH
+          - compiler: nvhpc
+            mpi: mpich3
+            gpu: cuda
+            io: smiol
+            image-suffix: nvhpc-mpich3-cuda
+            mpi-impl: mpich
+          - compiler: nvhpc
+            mpi: mpich3
+            gpu: cuda
+            io: pio
+            image-suffix: nvhpc-mpich3-cuda
+            mpi-impl: mpich
+          
+          # NVHPC CUDA with OpenMPI
+          - compiler: nvhpc
+            mpi: openmpi
+            gpu: cuda
+            io: smiol
+            image-suffix: nvhpc-openmpi-cuda
+            mpi-impl: openmpi
+          - compiler: nvhpc
+            mpi: openmpi
+            gpu: cuda
+            io: pio
+            image-suffix: nvhpc-openmpi-cuda
+            mpi-impl: openmpi
+
+    name: Run (${{ matrix.mpi }}, ${{ matrix.gpu }}, ${{ matrix.io }})
+    runs-on:
+      group: CIRRUS-4x8-gpu
+    container:
+      image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ inputs.os }}-${{ matrix.image-suffix }}:devel
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check GPU availability
+        run: |
+          echo "=== GPU Information ==="
+          nvidia-smi || echo "WARNING: nvidia-smi failed"
+
+      - name: Download executable
+        uses: actions/download-artifact@v4
+        with:
+          name: exe-${{ matrix.compiler }}-${{ matrix.mpi }}-${{ matrix.gpu }}-${{ matrix.io }}
+
+      - name: Run MPAS-A
+        uses: ./.github/actions/run-mpas
+        with:
+          executable: ./atmosphere_model
+          mpi-impl: ${{ matrix.mpi-impl }}
+          working-dir: run-${{ matrix.mpi }}-${{ matrix.gpu }}-${{ matrix.io }}
+
+      - name: Upload logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: logs-${{ matrix.compiler }}-${{ matrix.mpi }}-${{ matrix.gpu }}-${{ matrix.io }}
+          path: run-${{ matrix.mpi }}-${{ matrix.gpu }}-${{ matrix.io }}/log.*
+          retention-days: 5
+
+  #===========================================================================
+  # VALIDATE: Compare all logs against reference
+  #===========================================================================
+  validate:
+    needs: run
+    if: always()
+    runs-on: ubuntu-latest
+    name: Validate Results
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Download all logs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: logs-*
+          path: logs
+
+      - name: Validate logs
+        uses: ./.github/actions/validate-logs
+        with:
+          logs-path: logs
+
+  #===========================================================================
+  # CLEANUP: Remove executable artifacts
+  #===========================================================================
+  cleanup:
+    needs: [run, validate]
+    if: always()
+    runs-on: ubuntu-latest
+    name: Cleanup
+
+    steps:
+      - name: Delete executable artifacts
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: exe-*
+          failOnError: false

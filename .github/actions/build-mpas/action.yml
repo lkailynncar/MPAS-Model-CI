@@ -1,0 +1,81 @@
+name: 'Build MPAS'
+description: 'Build MPAS-Atmosphere with specified compiler configuration'
+
+inputs:
+  compiler:
+    description: 'Compiler family (gcc, nvhpc, oneapi, etc.)'
+    required: true
+  use-pio:
+    description: 'Use PIO library (true/false)'
+    required: false
+    default: 'false'
+  openacc:
+    description: 'Enable OpenACC (true/false)'
+    required: false
+    default: 'false'
+  build-timeout:
+    description: 'Build timeout in minutes'
+    required: false
+    default: '20'
+
+outputs:
+  executable:
+    description: 'Path to built executable'
+    value: ${{ steps.build.outputs.executable }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Interrogate Runtime Environment
+      shell: bash
+      run: |
+        if [ -f .github/workflows/interrogate_env.sh ]; then
+          chmod +x .github/workflows/interrogate_env.sh
+          .github/workflows/interrogate_env.sh
+        else
+          echo "=== Environment ==="
+          echo "CC=${CC:-not set}"
+          echo "FC=${FC:-not set}"
+          which mpicc 2>/dev/null || echo "mpicc not found"
+          which mpifort 2>/dev/null || echo "mpifort not found"
+        fi
+
+    - name: Build MPAS-A
+      id: build
+      shell: bash
+      run: |
+        # Set up I/O configuration
+        if [ "${{ inputs.use-pio }}" = "true" ]; then
+          export PIO_ROOT=${PIO_ROOT:-/container/pio}
+          export USE_PIO2=true
+        else
+          unset PIO
+          export USE_PIO2=false
+        fi
+        
+        # Set up accelerator configuration
+        if [ "${{ inputs.openacc }}" = "true" ]; then
+          export OPENACC=true
+        fi
+        
+        echo "Build configuration:"
+        echo "  Compiler: ${{ inputs.compiler }}"
+        echo "  USE_PIO2: ${USE_PIO2}"
+        echo "  OPENACC: ${OPENACC:-false}"
+        
+        # Run build script
+        chmod +x .github/workflows/build_mpas.sh
+        timeout ${{ inputs.build-timeout }}m .github/workflows/build_mpas.sh
+        
+        # Set output
+        echo "executable=$(pwd)/atmosphere_model" >> $GITHUB_OUTPUT
+
+    - name: Verify executable
+      shell: bash
+      run: |
+        if [ ! -f atmosphere_model ]; then
+          echo "ERROR: atmosphere_model not found!"
+          exit 1
+        fi
+        ls -la atmosphere_model
+        file atmosphere_model
