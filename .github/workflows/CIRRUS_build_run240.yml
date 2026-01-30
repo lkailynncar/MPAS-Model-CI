@@ -80,33 +80,8 @@ jobs:
 
       - name: Interrogate Runtime Environment
         run: |
-          pwd
-          ls
-          find -type d
-          env
-          cat /container/config_env.sh
-          df -h
-          cat /etc/os-release 2>/dev/null || true
-          uname -a
-          lscpu
-          nvidia-smi 2>/dev/null || true
-          echo && echo && echo
-          echo '----------------------------------------------------------------'
-          echo && echo && echo
-          echo "CC=${CC}"
-          echo "CXX=${CXX}"
-          echo "FC=${FC}"
-          echo "F77=${F77}"
-          echo
-          echo "CFLAGS=${CFLAGS}"
-          echo "CPPFLAGS=${CPPFLAGS}"
-          echo "CXXFLAGS=${CXXFLAGS}"
-          echo "FCFLAGS=${FCFLAGS}"
-          echo "F77FLAGS=${F77FLAGS}"
-          export CC CXX FC F77 CFLAGS CXXFLAGS FCFLAGS F77FLAGS CPPFLAGS
-          which conda 2>/dev/null && conda --version || echo " --> no conda in this container"
-          which mpicc
-          mpicc --version 2>/dev/null || true
+          chmod +x .github/workflows/interrogate_env.sh
+          .github/workflows/interrogate_env.sh
 
       - name: Build MPAS-A
         continue-on-error: false
@@ -189,33 +164,8 @@ jobs:
 
       - name: Interrogate Runtime Environment
         run: |
-          pwd
-          ls
-          find -type d
-          env
-          cat /container/config_env.sh
-          df -h
-          cat /etc/os-release 2>/dev/null || true
-          uname -a
-          lscpu
-          nvidia-smi 2>/dev/null || true
-          echo && echo && echo
-          echo '----------------------------------------------------------------'
-          echo && echo && echo
-          echo "CC=${CC}"
-          echo "CXX=${CXX}"
-          echo "FC=${FC}"
-          echo "F77=${F77}"
-          echo
-          echo "CFLAGS=${CFLAGS}"
-          echo "CPPFLAGS=${CPPFLAGS}"
-          echo "CXXFLAGS=${CXXFLAGS}"
-          echo "FCFLAGS=${FCFLAGS}"
-          echo "F77FLAGS=${F77FLAGS}"
-          export CC CXX FC F77 CFLAGS CXXFLAGS FCFLAGS F77FLAGS CPPFLAGS
-          which conda 2>/dev/null && conda --version || echo " --> no conda in this container"
-          which mpicc
-          mpicc --version 2>/dev/null || true
+          chmod +x .github/workflows/interrogate_env.sh
+          .github/workflows/interrogate_env.sh
 
       - name: Download atmosphere_model executable
         uses: actions/download-artifact@v4
