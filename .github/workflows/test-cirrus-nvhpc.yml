@@ -6,19 +6,6 @@ name: (CIRRUS) NVHPC GPU vs CPU
 
 on:
   workflow_dispatch:
-    inputs:
-      os:
-        description: 'Container OS'
-        type: choice
-        default: 'almalinux9'
-        options:
-          - almalinux8
-          - almalinux9
-
-env:
-  REGISTRY: ncarcisl
-  IMAGE_PREFIX: cisldev-x86_64
-  OS: ${{ inputs.os || 'almalinux9' }}
 
 jobs:
   #===========================================================================
@@ -34,14 +21,14 @@ jobs:
             mpi: mpich3
             gpu: nogpu
             io: smiol
-            image-suffix: nvhpc-mpich3
+            image: ncarcisl/cisldev-x86_64-almalinux9-nvhpc-mpich3:devel
             build-target: nvhpc
             openacc: false
           - compiler: nvhpc
             mpi: mpich3
             gpu: nogpu
             io: pio
-            image-suffix: nvhpc-mpich3
+            image: ncarcisl/cisldev-x86_64-almalinux9-nvhpc-mpich3:devel
             build-target: nvhpc
             openacc: false
           
@@ -50,14 +37,14 @@ jobs:
             mpi: openmpi
             gpu: nogpu
             io: smiol
-            image-suffix: nvhpc-openmpi
+            image: ncarcisl/cisldev-x86_64-almalinux9-nvhpc-openmpi:devel
             build-target: nvhpc
             openacc: false
           - compiler: nvhpc
             mpi: openmpi
             gpu: nogpu
             io: pio
-            image-suffix: nvhpc-openmpi
+            image: ncarcisl/cisldev-x86_64-almalinux9-nvhpc-openmpi:devel
             build-target: nvhpc
             openacc: false
 
@@ -66,14 +53,14 @@ jobs:
             mpi: mpich3
             gpu: cuda
             io: smiol
-            image-suffix: nvhpc-mpich3-cuda
+            image: ncarcisl/cisldev-x86_64-almalinux9-nvhpc-mpich3-cuda:devel
             build-target: nvhpc
             openacc: true
           - compiler: nvhpc
             mpi: mpich3
             gpu: cuda
             io: pio
-            image-suffix: nvhpc-mpich3-cuda
+            image: ncarcisl/cisldev-x86_64-almalinux9-nvhpc-mpich3-cuda:devel
             build-target: nvhpc
             openacc: true
           
@@ -82,14 +69,14 @@ jobs:
             mpi: openmpi
             gpu: cuda
             io: smiol
-            image-suffix: nvhpc-openmpi-cuda
+            image: ncarcisl/cisldev-x86_64-almalinux9-nvhpc-openmpi-cuda:devel
             build-target: nvhpc
             openacc: true
           - compiler: nvhpc
             mpi: openmpi
             gpu: cuda
             io: pio
-            image-suffix: nvhpc-openmpi-cuda
+            image: ncarcisl/cisldev-x86_64-almalinux9-nvhpc-openmpi-cuda:devel
             build-target: nvhpc
             openacc: true
 
@@ -97,7 +84,7 @@ jobs:
     runs-on:
       group: CIRRUS-4x8-gpu
     container:
-      image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ env.OS }}-${{ matrix.image-suffix }}:devel
+      image: ${{ matrix.image }}
 
     steps:
       - uses: actions/checkout@v4
@@ -132,13 +119,13 @@ jobs:
             mpi: mpich3
             gpu: nogpu
             io: smiol
-            image-suffix: nvhpc-mpich3
+            image: ncarcisl/cisldev-x86_64-almalinux9-nvhpc-mpich3:devel
             mpi-impl: mpich
           - compiler: nvhpc
             mpi: mpich3
             gpu: nogpu
             io: pio
-            image-suffix: nvhpc-mpich3
+            image: ncarcisl/cisldev-x86_64-almalinux9-nvhpc-mpich3:devel
             mpi-impl: mpich
           
           # NVHPC NoGPU with OpenMPI
@@ -146,13 +133,13 @@ jobs:
             mpi: openmpi
             gpu: nogpu
             io: smiol
-            image-suffix: nvhpc-openmpi
+            image: ncarcisl/cisldev-x86_64-almalinux9-nvhpc-openmpi:devel
             mpi-impl: openmpi
           - compiler: nvhpc
             mpi: openmpi
             gpu: nogpu
             io: pio
-            image-suffix: nvhpc-openmpi
+            image: ncarcisl/cisldev-x86_64-almalinux9-nvhpc-openmpi:devel
             mpi-impl: openmpi
 
           # NVHPC CUDA with MPICH
@@ -160,13 +147,13 @@ jobs:
             mpi: mpich3
             gpu: cuda
             io: smiol
-            image-suffix: nvhpc-mpich3-cuda
+            image: ncarcisl/cisldev-x86_64-almalinux9-nvhpc-mpich3-cuda:devel
             mpi-impl: mpich
           - compiler: nvhpc
             mpi: mpich3
             gpu: cuda
             io: pio
-            image-suffix: nvhpc-mpich3-cuda
+            image: ncarcisl/cisldev-x86_64-almalinux9-nvhpc-mpich3-cuda:devel
             mpi-impl: mpich
           
           # NVHPC CUDA with OpenMPI
@@ -174,20 +161,20 @@ jobs:
             mpi: openmpi
             gpu: cuda
             io: smiol
-            image-suffix: nvhpc-openmpi-cuda
+            image: ncarcisl/cisldev-x86_64-almalinux9-nvhpc-openmpi-cuda:devel
             mpi-impl: openmpi
           - compiler: nvhpc
             mpi: openmpi
             gpu: cuda
             io: pio
-            image-suffix: nvhpc-openmpi-cuda
+            image: ncarcisl/cisldev-x86_64-almalinux9-nvhpc-openmpi-cuda:devel
             mpi-impl: openmpi
 
     name: Run (${{ matrix.mpi }}, ${{ matrix.gpu }}, ${{ matrix.io }})
     runs-on:
       group: CIRRUS-4x8-gpu
     container:
-      image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ env.OS }}-${{ matrix.image-suffix }}:devel
+      image: ${{ matrix.image }}
 
     steps:
       - uses: actions/checkout@v4

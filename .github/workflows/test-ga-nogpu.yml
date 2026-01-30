@@ -5,19 +5,6 @@ name: (GitHub Actions) Build All, Run NoGPU
 
 on:
   workflow_dispatch:
-    inputs:
-      os:
-        description: 'Container OS'
-        type: choice
-        default: 'almalinux9'
-        options:
-          - almalinux8
-          - almalinux9
-
-env:
-  REGISTRY: ncarcisl
-  IMAGE_PREFIX: cisldev-x86_64
-  OS: ${{ inputs.os || 'almalinux9' }}
 
 jobs:
   #===========================================================================
@@ -31,37 +18,37 @@ jobs:
           # GCC builds
           - compiler: gcc
             mpi: mpich3
-            image-suffix: gcc-mpich3
+            image: ncarcisl/cisldev-x86_64-almalinux9-gcc-mpich3:devel
             build-target: gfortran
           - compiler: gcc
             mpi: openmpi
-            image-suffix: gcc-openmpi
+            image: ncarcisl/cisldev-x86_64-almalinux9-gcc-openmpi:devel
             build-target: gfortran
           
           # NVHPC builds (nogpu)
           - compiler: nvhpc
             mpi: mpich3
-            image-suffix: nvhpc-mpich3
+            image: ncarcisl/cisldev-x86_64-almalinux9-nvhpc-mpich3:devel
             build-target: nvhpc
           - compiler: nvhpc
             mpi: openmpi
-            image-suffix: nvhpc-openmpi
+            image: ncarcisl/cisldev-x86_64-almalinux9-nvhpc-openmpi:devel
             build-target: nvhpc
           
           # OneAPI builds
           - compiler: oneapi
             mpi: mpich3
-            image-suffix: oneapi-mpich3
+            image: ncarcisl/cisldev-x86_64-almalinux9-oneapi-mpich3:devel
             build-target: intel
           - compiler: oneapi
             mpi: openmpi
-            image-suffix: oneapi-openmpi
+            image: ncarcisl/cisldev-x86_64-almalinux9-oneapi-openmpi:devel
             build-target: intel
 
     name: Build (${{ matrix.compiler }}, ${{ matrix.mpi }})
     runs-on: ubuntu-latest
     container:
-      image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ env.OS }}-${{ matrix.image-suffix }}:devel
+      image: ${{ matrix.image }}
 
     steps:
       - uses: actions/checkout@v4
@@ -92,37 +79,37 @@ jobs:
           # GCC runs
           - compiler: gcc
             mpi: mpich3
-            image-suffix: gcc-mpich3
+            image: ncarcisl/cisldev-x86_64-almalinux9-gcc-mpich3:devel
             mpi-impl: mpich
           - compiler: gcc
             mpi: openmpi
-            image-suffix: gcc-openmpi
+            image: ncarcisl/cisldev-x86_64-almalinux9-gcc-openmpi:devel
             mpi-impl: openmpi
           
           # NVHPC runs (nogpu)
           - compiler: nvhpc
             mpi: mpich3
-            image-suffix: nvhpc-mpich3
+            image: ncarcisl/cisldev-x86_64-almalinux9-nvhpc-mpich3:devel
             mpi-impl: mpich
           - compiler: nvhpc
             mpi: openmpi
-            image-suffix: nvhpc-openmpi
+            image: ncarcisl/cisldev-x86_64-almalinux9-nvhpc-openmpi:devel
             mpi-impl: openmpi
           
           # OneAPI runs
           - compiler: oneapi
             mpi: mpich3
-            image-suffix: oneapi-mpich3
+            image: ncarcisl/cisldev-x86_64-almalinux9-oneapi-mpich3:devel
             mpi-impl: mpich
           - compiler: oneapi
             mpi: openmpi
-            image-suffix: oneapi-openmpi
+            image: ncarcisl/cisldev-x86_64-almalinux9-oneapi-openmpi:devel
             mpi-impl: openmpi
 
     name: Run (${{ matrix.compiler }}, ${{ matrix.mpi }})
     runs-on: ubuntu-latest
     container:
-      image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ env.OS }}-${{ matrix.image-suffix }}:devel
+      image: ${{ matrix.image }}
 
     steps:
       - uses: actions/checkout@v4
