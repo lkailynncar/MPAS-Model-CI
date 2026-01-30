@@ -17,6 +17,7 @@ on:
 env:
   REGISTRY: ncarcisl
   IMAGE_PREFIX: cisldev-x86_64
+  OS: ${{ inputs.os || 'almalinux9' }}
 
 jobs:
   #===========================================================================
@@ -60,7 +61,7 @@ jobs:
     name: Build (${{ matrix.compiler }}, ${{ matrix.mpi }})
     runs-on: ubuntu-latest
     container:
-      image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ inputs.os }}-${{ matrix.image-suffix }}:devel
+      image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ env.OS }}-${{ matrix.image-suffix }}:devel
 
     steps:
       - uses: actions/checkout@v4
@@ -121,7 +122,7 @@ jobs:
     name: Run (${{ matrix.compiler }}, ${{ matrix.mpi }})
     runs-on: ubuntu-latest
     container:
-      image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ inputs.os }}-${{ matrix.image-suffix }}:devel
+      image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ env.OS }}-${{ matrix.image-suffix }}:devel
 
     steps:
       - uses: actions/checkout@v4

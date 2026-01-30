@@ -18,6 +18,7 @@ on:
 env:
   REGISTRY: ncarcisl
   IMAGE_PREFIX: cisldev-x86_64
+  OS: ${{ inputs.os || 'almalinux9' }}
 
 jobs:
   #===========================================================================
@@ -96,7 +97,7 @@ jobs:
     runs-on:
       group: CIRRUS-4x8-gpu
     container:
-      image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ inputs.os }}-${{ matrix.image-suffix }}:devel
+      image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ env.OS }}-${{ matrix.image-suffix }}:devel
 
     steps:
       - uses: actions/checkout@v4
@@ -186,7 +187,7 @@ jobs:
     runs-on:
       group: CIRRUS-4x8-gpu
     container:
-      image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ inputs.os }}-${{ matrix.image-suffix }}:devel
+      image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ env.OS }}-${{ matrix.image-suffix }}:devel
 
     steps:
       - uses: actions/checkout@v4
