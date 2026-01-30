@@ -124,11 +124,12 @@ runs:
         
         # Set outputs
         echo "log-dir=$(pwd)" >> $GITHUB_OUTPUT
+        echo "run-exit-code=${RUN_STATUS}" >> $GITHUB_OUTPUT
         if [ $RUN_STATUS -eq 0 ]; then
           echo "status=success" >> $GITHUB_OUTPUT
         else
           echo "status=failed" >> $GITHUB_OUTPUT
-          echo "WARNING: Run exited with status $RUN_STATUS"
+          echo "::warning::Model run exited with status $RUN_STATUS"
         fi
 
     - name: List output files
@@ -142,4 +143,13 @@ runs:
           ls -la *.nc 2>/dev/null || echo "No NetCDF files found"
         else
           echo "Working directory ${{ inputs.working-dir }} does not exist"
+        fi
+
+    - name: Check run status
+      shell: bash
+      if: always()
+      run: |
+        if [ "${{ steps.run.outputs.status }}" = "failed" ]; then
+          echo "::error::MPAS model run failed with exit code ${{ steps.run.outputs.run-exit-code }}"
+          exit 1
         fi
