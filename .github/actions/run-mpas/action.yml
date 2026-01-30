@@ -78,6 +78,12 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working-dir }}
       run: |
+        # Source container environment if available
+        # This sets LD_LIBRARY_PATH and other runtime paths
+        if [ -f /container/config_env.sh ]; then
+          source /container/config_env.sh
+        fi
+        
         # Set MPI implementation
         if [ -n "${{ inputs.mpi-impl }}" ]; then
           export MPI_IMPL="${{ inputs.mpi-impl }}"
@@ -98,6 +104,7 @@ runs:
         echo "  MPI_IMPL: ${MPI_IMPL:-auto}"
         echo "  MPI_FLAGS: ${MPI_FLAGS}"
         echo "  Stack limit: $(ulimit -s)"
+        echo "  LD_LIBRARY_PATH: ${LD_LIBRARY_PATH:-not set}"
         
         # Run model
         set +e

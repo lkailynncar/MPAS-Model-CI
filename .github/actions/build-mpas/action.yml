@@ -44,6 +44,13 @@ runs:
       id: build
       shell: bash
       run: |
+        # Source container environment if available
+        # This sets NETCDF, PNETCDF, PIO, and other library paths
+        if [ -f /container/config_env.sh ]; then
+          echo "Sourcing container environment from /container/config_env.sh"
+          source /container/config_env.sh
+        fi
+        
         # Map compiler input to COMPILER_FAMILY if not already set
         # The container should set this, but we provide a fallback
         if [ -z "${COMPILER_FAMILY}" ]; then
@@ -83,6 +90,8 @@ runs:
         echo "Build configuration:"
         echo "  Compiler input: ${{ inputs.compiler }}"
         echo "  COMPILER_FAMILY: ${COMPILER_FAMILY}"
+        echo "  NETCDF: ${NETCDF:-not set}"
+        echo "  PNETCDF: ${PNETCDF:-not set}"
         echo "  USE_PIO2: ${USE_PIO2}"
         echo "  OPENACC: ${OPENACC:-false}"
         
