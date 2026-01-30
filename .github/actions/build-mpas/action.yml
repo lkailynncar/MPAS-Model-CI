@@ -44,6 +44,28 @@ runs:
       id: build
       shell: bash
       run: |
+        # Map compiler input to COMPILER_FAMILY if not already set
+        # The container should set this, but we provide a fallback
+        if [ -z "${COMPILER_FAMILY}" ]; then
+          case "${{ inputs.compiler }}" in
+            gfortran|gnu)
+              export COMPILER_FAMILY="gcc"
+              ;;
+            nvhpc|nvfortran)
+              export COMPILER_FAMILY="nvhpc"
+              ;;
+            intel|ifx|ifort)
+              export COMPILER_FAMILY="oneapi"
+              ;;
+            llvm|flang)
+              export COMPILER_FAMILY="clang"
+              ;;
+            *)
+              export COMPILER_FAMILY="${{ inputs.compiler }}"
+              ;;
+          esac
+        fi
+        
         # Set up I/O configuration
         if [ "${{ inputs.use-pio }}" = "true" ]; then
           export PIO_ROOT=${PIO_ROOT:-/container/pio}
@@ -59,7 +81,8 @@ runs:
         fi
         
         echo "Build configuration:"
-        echo "  Compiler: ${{ inputs.compiler }}"
+        echo "  Compiler input: ${{ inputs.compiler }}"
+        echo "  COMPILER_FAMILY: ${COMPILER_FAMILY}"
         echo "  USE_PIO2: ${USE_PIO2}"
         echo "  OPENACC: ${OPENACC:-false}"
         
