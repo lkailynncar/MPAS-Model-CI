@@ -42,6 +42,11 @@ echo "Run duration: $RUN_DURATION"
 echo "Restart interval: $RESTART_INTERVAL"
 echo "MPI_FLAGS: $MPI_FLAGS"
 
+# Set unlimited stack size to prevent stack overflow issues
+# This is especially important for Intel Fortran compiled binaries
+ulimit -s unlimited 2>/dev/null || echo "Warning: Could not set unlimited stack size"
+echo "Stack size limit: $(ulimit -s)"
+
 # Run the model with MPI flags
 # Use pipefail to ensure the script fails if mpirun fails
 set -o pipefail
