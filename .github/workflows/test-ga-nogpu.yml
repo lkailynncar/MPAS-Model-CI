@@ -5,6 +5,9 @@ name: (GitHub Actions) Build All, Run NoGPU
 
 on:
   workflow_dispatch:
+    branches:
+      - master
+      - develop
 
 jobs:
   #===========================================================================

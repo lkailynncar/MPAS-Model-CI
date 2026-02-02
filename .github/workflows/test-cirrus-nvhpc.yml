@@ -6,6 +6,9 @@ name: (CIRRUS) NVHPC GPU vs CPU
 
 on:
   workflow_dispatch:
+    branches:
+      - master
+      - develop
 
 jobs:
   #===========================================================================
