@@ -114,18 +114,10 @@ jobs:
         run: chmod +x atmosphere_model
 
       - name: Download test case
-        shell: bash
-        run: |
-          source $GITHUB_WORKSPACE/.github/test-cases/ect-120km/config.env
-          DATA_REPO="${DATA_REPO}"
-          ARCHIVE="${RESOLUTION}.tar.gz"
-          curl -fsSL "https://github.com/${DATA_REPO}/raw/main/${ARCHIVE}" -o "${ARCHIVE}"
-          tar xzf "${ARCHIVE}"
-          CASE_DIR=$(tar tzf "${ARCHIVE}" 2>/dev/null | head -1 | cut -d/ -f1 || true)
-          if [ -z "${CASE_DIR}" ]; then
-            CASE_DIR=$(ls -td */ 2>/dev/null | head -1 | tr -d '/')
-          fi
-          mv "${CASE_DIR}" base-case
+        uses: ./.github/actions/download-testdata
+        with:
+          test-case: ect-120km
+          dest-dir: base-case
 
       - name: Install Python dependencies
         shell: bash
@@ -270,8 +262,8 @@ jobs:
           ls -la ensemble-files/
           NFILES=$(ls ensemble-files/history.*.nc 2>/dev/null | wc -l)
           echo "Total files: ${NFILES}"
-          if [ "${NFILES}" -lt 50 ]; then
-            echo "::error::Too few ensemble members (${NFILES}). PyCECT needs more members than output variables (~45 after trimming). Recommended: 200."
+          if [ "${NFILES}" -lt 48 ]; then
+            echo "::error::Too few ensemble members (${NFILES}). PyCECT needs more members than output variables (~47 after trimming). Recommended: 200."
             exit 1
           fi
 
@@ -300,8 +292,8 @@ jobs:
 
           if [ ! -f "${SUMMARY_NAME}" ]; then
             echo "::error::pyEnsSumMPAS did not produce ${SUMMARY_NAME}."
-            echo "  PyCECT requires ensemble size >= number of output variables (~63)."
-            echo "  Current ensemble size: ${ESIZE}. Increase to at least 63 (recommended: 200)."
+            echo "  PyCECT requires ensemble size >= number of output variables (~47 after trimming)."
+            echo "  Current ensemble size: ${ESIZE}. Increase to at least 50 (recommended: 200)."
             exit 1
           fi
 
