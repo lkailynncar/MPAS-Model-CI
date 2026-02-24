@@ -63,14 +63,18 @@ jobs:
         with:
           name: exe-ect
 
-      - name: Download 120km test case
+      - name: Download test case
         shell: bash
         run: |
-          DATA_REPO="NCAR/mpas-ci-data"
-          ARCHIVE="120km.tar.gz"
+          source $GITHUB_WORKSPACE/.github/test-cases/ect-120km/config.env
+          DATA_REPO="${DATA_REPO}"
+          ARCHIVE="${RESOLUTION}.tar.gz"
           curl -fsSL "https://github.com/${DATA_REPO}/raw/main/${ARCHIVE}" -o "${ARCHIVE}"
           tar xzf "${ARCHIVE}"
-          CASE_DIR=$(tar tzf "${ARCHIVE}" 2>/dev/null | head -1 | cut -d/ -f1)
+          CASE_DIR=$(tar tzf "${ARCHIVE}" 2>/dev/null | head -1 | cut -d/ -f1 || true)
+          if [ -z "${CASE_DIR}" ]; then
+            CASE_DIR=$(ls -td */ 2>/dev/null | head -1 | tr -d '/')
+          fi
           mv "${CASE_DIR}" run-ect-${{ matrix.member }}
 
       - name: Setup run directory
@@ -82,7 +86,9 @@ jobs:
 
       - name: Install Python dependencies
         shell: bash
-        run: pip install netCDF4 numpy
+        run: |
+          python3 -m ensurepip --upgrade 2>/dev/null || true
+          python3 -m pip install netCDF4 numpy
 
       - name: Perturb initial conditions
         shell: bash
@@ -97,16 +103,18 @@ jobs:
             exit 1
           fi
           echo "Perturbing: ${IC_FILE}"
-          python .github/actions/perturb-ic/perturb_theta.py "${IC_FILE}" --seed ${{ matrix.member }}
+          python3 .github/actions/perturb-ic/perturb_theta.py "${IC_FILE}" --seed ${{ matrix.member }}
 
       - name: Configure namelist
         shell: bash
         working-directory: run-ect-${{ matrix.member }}
         run: |
-          source $GITHUB_WORKSPACE/.github/test-cases/120km/config.env
+          source $GITHUB_WORKSPACE/.github/test-cases/ect-120km/config.env
           sed -i "s/config_run_duration = '[^']*'/config_run_duration = '${RUN_DURATION}'/" namelist.atmosphere
           sed -i '/<immutable_stream name="restart"/,/\/>/ s/output_interval="[^"]*"/output_interval="'"${RESTART_INTERVAL}"'"/' streams.atmosphere
+          sed -i '/<stream name="output"/,/>/ s/output_interval="[^"]*"/output_interval="'"${ECT_HISTORY_INTERVAL}"'"/' streams.atmosphere
           echo "Run duration: ${RUN_DURATION}"
+          echo "History interval: ${ECT_HISTORY_INTERVAL}"
 
       - name: Run MPAS-A
         shell: bash
@@ -114,7 +122,17 @@ jobs:
         run: |
           source /container/config_env.sh
           ulimit -s unlimited 2>/dev/null || true
+          set +e
           timeout 30m mpirun -n 1 ./atmosphere_model
+          RUN_STATUS=$?
+          set -e
+          if [ $RUN_STATUS -ne 0 ]; then
+            echo "::warning::Model exited with status ${RUN_STATUS}"
+          fi
+          if ! ls history.*.nc &>/dev/null; then
+            echo "::error::No history file produced"
+            exit 1
+          fi
 
       - name: Upload history file
         uses: actions/upload-artifact@v4
@@ -159,8 +177,8 @@ jobs:
       - name: Download ensemble summary file
         id: summary
         run: |
-          DATA_REPO="NCAR/mpas-ci-data"
-          SUMMARY="mpas_ect_summary_120km.nc"
+          source .github/test-cases/ect-120km/config.env
+          SUMMARY="${ECT_SUMMARY_PREFIX}.nc"
           echo "Downloading ${SUMMARY} from ${DATA_REPO}..."
           HTTP_CODE=$(curl -sL -w "%{http_code}" \
             "https://github.com/${DATA_REPO}/raw/main/${SUMMARY}" \
@@ -174,6 +192,8 @@ jobs:
           fi
           echo "Downloaded summary file: $(du -h ${SUMMARY})"
           echo "available=true" >> $GITHUB_OUTPUT
+          echo "summary-file=${SUMMARY}" >> $GITHUB_OUTPUT
+          echo "tslice=${ECT_TSLICE}" >> $GITHUB_OUTPUT
 
       - name: Download history files
         if: steps.summary.outputs.available == 'true'
@@ -193,9 +213,9 @@ jobs:
         if: steps.summary.outputs.available == 'true'
         run: |
           python pycect/pyCECT.py \
-            --sumfile mpas_ect_summary_120km.nc \
+            --sumfile ${{ steps.summary.outputs.summary-file }} \
             --indir ect-test-files \
-            --tslice 3 \
+            --tslice ${{ steps.summary.outputs.tslice }} \
             --mpas \
             --verbose
 

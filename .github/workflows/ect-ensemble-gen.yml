@@ -108,25 +108,31 @@ jobs:
       - name: Make executable
         run: chmod +x atmosphere_model
 
-      - name: Download 120km test case
+      - name: Download test case
         shell: bash
         run: |
-          DATA_REPO="NCAR/mpas-ci-data"
-          ARCHIVE="120km.tar.gz"
+          source $GITHUB_WORKSPACE/.github/test-cases/ect-120km/config.env
+          DATA_REPO="${DATA_REPO}"
+          ARCHIVE="${RESOLUTION}.tar.gz"
           curl -fsSL "https://github.com/${DATA_REPO}/raw/main/${ARCHIVE}" -o "${ARCHIVE}"
           tar xzf "${ARCHIVE}"
-          CASE_DIR=$(tar tzf "${ARCHIVE}" 2>/dev/null | head -1 | cut -d/ -f1)
+          CASE_DIR=$(tar tzf "${ARCHIVE}" 2>/dev/null | head -1 | cut -d/ -f1 || true)
+          if [ -z "${CASE_DIR}" ]; then
+            CASE_DIR=$(ls -td */ 2>/dev/null | head -1 | tr -d '/')
+          fi
           mv "${CASE_DIR}" base-case
 
       - name: Install Python dependencies
         shell: bash
-        run: pip install netCDF4 numpy
+        run: |
+          python3 -m ensurepip --upgrade 2>/dev/null || true
+          python3 -m pip install netCDF4 numpy
 
       - name: Run ensemble members ${{ matrix.batch.start }}-${{ matrix.batch.end }}
         shell: bash
         run: |
           source /container/config_env.sh
-          source .github/test-cases/120km/config.env
+          source .github/test-cases/ect-120km/config.env
           ulimit -s unlimited 2>/dev/null || true
 
           mkdir -p history-output
@@ -142,35 +148,35 @@ jobs:
             cp -r base-case "${RUNDIR}"
             ln -sf $(realpath atmosphere_model) "${RUNDIR}/atmosphere_model"
 
-            # Find and perturb initial conditions
+            # Perturb initial conditions
+            echo "[$(date +%H:%M:%S)] Perturbing initial conditions (seed=${MEMBER})..."
             IC_FILE="${RUNDIR}/init.nc"
             if [ ! -f "${IC_FILE}" ]; then
               IC_FILE=$(ls ${RUNDIR}/*.init*.nc 2>/dev/null | head -1)
             fi
-            python .github/actions/perturb-ic/perturb_theta.py "${IC_FILE}" --seed ${MEMBER}
+            python3 .github/actions/perturb-ic/perturb_theta.py "${IC_FILE}" --seed ${MEMBER}
 
-            # Configure namelist
+            # Configure namelist and streams
             cd "${RUNDIR}"
             sed -i "s/config_run_duration = '[^']*'/config_run_duration = '${RUN_DURATION}'/" namelist.atmosphere
             sed -i '/<immutable_stream name="restart"/,/\/>/ s/output_interval="[^"]*"/output_interval="'"${RESTART_INTERVAL}"'"/' streams.atmosphere
+            sed -i '/<stream name="output"/,/>/ s/output_interval="[^"]*"/output_interval="'"${ECT_HISTORY_INTERVAL}"'"/' streams.atmosphere
 
-            # Run model
+            # Run model (set +e: gfortran may exit non-zero on IEEE warnings)
+            echo "[$(date +%H:%M:%S)] Running MPAS-A (${RUN_DURATION}, 1 rank)..."
+            set +e
             timeout ${RUN_TIMEOUT}m mpirun -n 1 ./atmosphere_model
             RUN_STATUS=$?
+            set -e
+            echo "[$(date +%H:%M:%S)] Model finished (exit code ${RUN_STATUS})"
 
-            if [ $RUN_STATUS -ne 0 ]; then
-              echo "::warning::Member ${MEMBER_ID} failed with exit code ${RUN_STATUS}"
-              cd ..
-              continue
-            fi
-
-            # Copy history file with member ID in name for pyEnsSumMPAS
-            HIST_FILE=$(ls history.*.nc 2>/dev/null | tail -1)
+            # Check for history file as the real success indicator
+            HIST_FILE=$(ls -t history.*.nc 2>/dev/null | head -1 || true)
             if [ -n "${HIST_FILE}" ]; then
               cp "${HIST_FILE}" "../history-output/history.${MEMBER_ID}.nc"
-              echo "Saved history file for member ${MEMBER_ID}"
+              echo "[$(date +%H:%M:%S)] Saved history file for member ${MEMBER_ID}"
             else
-              echo "::warning::No history file found for member ${MEMBER_ID}"
+              echo "::warning::Member ${MEMBER_ID} failed (exit ${RUN_STATUS}, no history file)"
             fi
 
             cd ..
@@ -198,9 +204,40 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: src/core_atmosphere/Registry.xml
+          path: mpas-source
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
+      - name: Collect metadata
+        id: meta
+        run: |
+          source mpas-source/.github/test-cases/ect-120km/config.env
+          VERSION=$(grep -oP 'version="\K[^"]+' mpas-source/src/core_atmosphere/Registry.xml || echo "unknown")
+          DATE=$(date -u +%Y-%m-%d)
+          SUMMARY_NAME="${ECT_SUMMARY_PREFIX}_v${VERSION}_${DATE//-/}.nc"
+
+          echo "mpas-version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "branch=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+          echo "commit=${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
+          echo "date=${DATE}" >> $GITHUB_OUTPUT
+          echo "resolution=${RESOLUTION}" >> $GITHUB_OUTPUT
+          echo "ensemble-size=${{ needs.prepare.outputs.ensemble-size }}" >> $GITHUB_OUTPUT
+          echo "summary-prefix=${ECT_SUMMARY_PREFIX}" >> $GITHUB_OUTPUT
+          echo "summary-name=${SUMMARY_NAME}" >> $GITHUB_OUTPUT
+          echo "tslice=${ECT_TSLICE}" >> $GITHUB_OUTPUT
+
+          echo "=== ECT Metadata ==="
+          echo "  MPAS version: ${VERSION}"
+          echo "  Branch:       ${GITHUB_REF_NAME}"
+          echo "  Commit:       ${GITHUB_SHA::8}"
+          echo "  Resolution:   ${RESOLUTION}"
+          echo "  Ensemble:     ${{ needs.prepare.outputs.ensemble-size }} members"
+          echo "  Summary:      ${SUMMARY_NAME}"
 
       - name: Install dependencies
         run: pip install numpy scipy netCDF4
@@ -228,6 +265,8 @@ jobs:
 
       - name: Generate ensemble summary
         run: |
+          SUMMARY_NAME="${{ steps.meta.outputs.summary-name }}"
+          TSLICE="${{ steps.meta.outputs.tslice }}"
           ESIZE=${{ needs.prepare.outputs.ensemble-size }}
           NFILES=$(ls ensemble-files/history.*.nc 2>/dev/null | wc -l)
           if [ "${NFILES}" -lt "${ESIZE}" ]; then
@@ -238,8 +277,8 @@ jobs:
           python pycect/pyEnsSumMPAS.py \
             --esize ${ESIZE} \
             --indir ensemble-files \
-            --sumfile mpas_ect_summary_120km.nc \
-            --tslice 3 \
+            --sumfile "${SUMMARY_NAME}" \
+            --tslice ${TSLICE} \
             --tag $(date +%Y%m%d) \
             --model mpas \
             --mach github-actions \
@@ -247,26 +286,103 @@ jobs:
             --jsonfile pycect/empty_excluded.json \
             --mpi_disable
 
-      - name: Upload summary file
+      - name: Upload summary artifact
         uses: actions/upload-artifact@v4
         with:
           name: mpas-ect-summary
-          path: mpas_ect_summary_120km.nc
+          path: ${{ steps.meta.outputs.summary-name }}
           retention-days: 90
 
-      - name: Summary
+      - name: Push summary to mpas-ci-data
+        if: success()
+        env:
+          CI_DATA_TOKEN: ${{ secrets.MPAS_CI_DATA_TOKEN }}
         run: |
+          if [ -z "${CI_DATA_TOKEN}" ]; then
+            echo "::warning::MPAS_CI_DATA_TOKEN secret not set — skipping upload to mpas-ci-data."
+            echo "Set a PAT with repo scope as MPAS_CI_DATA_TOKEN to enable automatic upload."
+            exit 0
+          fi
+
+          SUMMARY_NAME="${{ steps.meta.outputs.summary-name }}"
+          SUMMARY_PREFIX="${{ steps.meta.outputs.summary-prefix }}"
+          DATA_REPO="NCAR/mpas-ci-data"
+          VERSION="${{ steps.meta.outputs.mpas-version }}"
+          BRANCH="${{ steps.meta.outputs.branch }}"
+          COMMIT="${{ steps.meta.outputs.commit }}"
+          DATE="${{ steps.meta.outputs.date }}"
+          ESIZE="${{ steps.meta.outputs.ensemble-size }}"
+          RESOLUTION="${{ steps.meta.outputs.resolution }}"
+          TSLICE="${{ steps.meta.outputs.tslice }}"
+          CURRENT_FILE="${SUMMARY_PREFIX}.nc"
+
+          git clone "https://x-access-token:${CI_DATA_TOKEN}@github.com/${DATA_REPO}.git" ci-data
+
+          # Archive versioned copy
+          mkdir -p ci-data/ect-summaries
+          cp "${SUMMARY_NAME}" "ci-data/ect-summaries/"
+
+          # Update current summary (this is what ect-test.yml downloads)
+          cp "${SUMMARY_NAME}" "ci-data/${CURRENT_FILE}"
+
+          # Write metadata for current summary
+          python3 -c "
+          import json
+          json.dump({
+              'current_summary': '${CURRENT_FILE}',
+              'versioned_summary': 'ect-summaries/${SUMMARY_NAME}',
+              'mpas_version': '${VERSION}',
+              'branch': '${BRANCH}',
+              'commit': '${COMMIT}',
+              'resolution': '${RESOLUTION}',
+              'ensemble_size': int('${ESIZE}'),
+              'generated': '${DATE}',
+              'pycect_tslice': int('${TSLICE}'),
+              'workflow_run': '${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}'
+          }, open('ci-data/ect_summary_metadata.json', 'w'), indent=2)
+          print('Wrote ect_summary_metadata.json')
+          "
+
+          cd ci-data
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "${CURRENT_FILE}" "ect-summaries/${SUMMARY_NAME}" ect_summary_metadata.json
+          git commit -m "$(cat <<EOF
+Update ECT summary: MPAS v${VERSION} (${RESOLUTION})
+
+Archived: ect-summaries/${SUMMARY_NAME}
+Branch:   ${BRANCH}
+Commit:   ${COMMIT}
+Ensemble: ${ESIZE} members
+Generated: ${DATE}
+Run:      ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+EOF
+          )"
+          git push
+
+          echo "=== Pushed to ${DATA_REPO} ==="
+          echo "  Current:  ${CURRENT_FILE}"
+          echo "  Archived: ect-summaries/${SUMMARY_NAME}"
+
+      - name: Summary
+        if: always()
+        run: |
+          SUMMARY_NAME="${{ steps.meta.outputs.summary-name }}"
           echo "=========================================="
           echo "  ECT Ensemble Summary Generated"
           echo "=========================================="
           echo ""
-          echo "File: mpas_ect_summary_120km.nc"
-          echo "Size: $(du -h mpas_ect_summary_120km.nc | cut -f1)"
+          echo "  MPAS version:  ${{ steps.meta.outputs.mpas-version }}"
+          echo "  Branch:        ${{ steps.meta.outputs.branch }}"
+          echo "  Commit:        ${{ steps.meta.outputs.commit }}"
+          echo "  Resolution:    ${{ steps.meta.outputs.resolution }}"
+          echo "  Ensemble size: ${{ steps.meta.outputs.ensemble-size }}"
+          echo "  Date:          ${{ steps.meta.outputs.date }}"
           echo ""
-          echo "To use this summary file for ECT testing:"
-          echo "  1. Download the 'mpas-ect-summary' artifact"
-          echo "  2. Upload it to NCAR/mpas-ci-data as mpas_ect_summary_120km.nc"
-          echo "  3. The ect-test.yml workflow will automatically use it"
+          if [ -f "${SUMMARY_NAME}" ]; then
+            echo "  File: ${SUMMARY_NAME}"
+            echo "  Size: $(du -h "${SUMMARY_NAME}" | cut -f1)"
+          fi
 
   #===========================================================================
   # CLEANUP
