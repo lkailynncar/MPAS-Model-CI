@@ -55,21 +55,11 @@ runs:
         # The container should set this, but we provide a fallback
         if [ -z "${COMPILER_FAMILY}" ]; then
           case "${{ inputs.compiler }}" in
-            gfortran|gnu)
-              export COMPILER_FAMILY="gcc"
-              ;;
-            nvhpc|nvfortran)
-              export COMPILER_FAMILY="nvhpc"
-              ;;
-            intel|ifx|ifort)
-              export COMPILER_FAMILY="oneapi"
-              ;;
-            llvm|flang)
-              export COMPILER_FAMILY="clang"
-              ;;
-            *)
-              export COMPILER_FAMILY="${{ inputs.compiler }}"
-              ;;
+            gcc|gfortran|gnu)   export COMPILER_FAMILY="gcc" ;;
+            nvhpc|nvfortran)    export COMPILER_FAMILY="nvhpc" ;;
+            oneapi|intel|ifx)   export COMPILER_FAMILY="oneapi" ;;
+            llvm|flang|clang)   export COMPILER_FAMILY="clang" ;;
+            *)                  export COMPILER_FAMILY="${{ inputs.compiler }}" ;;
           esac
         fi
         
@@ -95,9 +85,23 @@ runs:
         echo "  USE_PIO2: ${USE_PIO2}"
         echo "  OPENACC: ${OPENACC:-false}"
         
-        # Run build script
-        chmod +x .github/workflows/build_mpas.sh
-        timeout ${{ inputs.build-timeout }}m .github/workflows/build_mpas.sh
+        # Map COMPILER_FAMILY to make target
+        case "${COMPILER_FAMILY}" in
+          aocc|clang)  MAKE_TARGET="llvm" ;;
+          gcc)         MAKE_TARGET="gfortran" ;;
+          oneapi)      MAKE_TARGET="intel" ;;
+          nvhpc)       MAKE_TARGET="nvhpc" ;;
+          *)
+            echo "::error::Unrecognized COMPILER_FAMILY=${COMPILER_FAMILY}"
+            exit 1
+            ;;
+        esac
+
+        echo "  Make target: ${MAKE_TARGET}"
+        echo "  Parallel jobs: ${MAKE_J_PROCS:-$(nproc)}"
+
+        timeout ${{ inputs.build-timeout }}m \
+          make ${MAKE_TARGET} CORE=atmosphere --jobs ${MAKE_J_PROCS:-$(nproc)}
         
         # Set output
         echo "executable=$(pwd)/atmosphere_model" >> $GITHUB_OUTPUT
